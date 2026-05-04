@@ -1,0 +1,89 @@
+{
+  "_meta": {
+    "models": {
+      "commentarySession": "A saved commentary session with video reference, personality used, and timestamped commentary entries",
+      "commentaryEntry": "A single commentary line with timestamp and the generated text"
+    },
+    "relationships": [
+      "Each commentary session has many commentary entries ordered by timestamp",
+      "Each session references the personality that was used to generate the commentary"
+    ]
+  },
+  "sessions": [
+    {
+      "id": "s001",
+      "title": "Basketball Highlights - March 28",
+      "date": "2026-03-28T19:30:00Z",
+      "thumbnailUrl": "/thumbnails/basketball-march28.jpg",
+      "personalityName": "Snappy Slapstick",
+      "personalityId": "p001",
+      "duration": "00:05:42",
+      "commentaryCount": 12,
+      "entries": [
+        { "timestamp": "00:00:15", "text": "And down goes Murphy! That's not a basketball move, that's a cartoon slip! Someone get this man a banana peel!" },
+        { "timestamp": "00:01:23", "text": "Did you see that crossover? The defender fell over like a folding chair!" },
+        { "timestamp": "00:02:45", "text": "Three points! That ball went in smoother than butter on a hot skillet!" },
+        { "timestamp": "00:04:10", "text": "And that's the buzzer! What a finish — he dunked so hard the rim is still vibrating!" }
+      ]
+    },
+    {
+      "id": "s002",
+      "title": "Soccer Match - April 2",
+      "date": "2026-04-02T15:00:00Z",
+      "thumbnailUrl": "/thumbnails/soccer-april2.jpg",
+      "personalityName": "Professor Play-by-Play",
+      "personalityId": "p003",
+      "duration": "00:08:15",
+      "commentaryCount": 18,
+      "entries": [
+        { "timestamp": "00:00:30", "text": "The formation here is a classic 4-4-2, with both wingers hugging the touchline to stretch the opposition's back line. Notice how the central midfielder drops deep to receive the ball — this is the first phase of build-up play." },
+        { "timestamp": "00:03:12", "text": "Excellent through-ball! The striker times his run perfectly to stay onside. This is the classic 'pass and move' principle that managers like Guardiola and Klopp emphasize — the ball moves faster than any defender can react." },
+        { "timestamp": "00:07:45", "text": "Goal! And what a finish — placed precisely into the far corner where the keeper can't reach. The expected goals (xG) value for that chance was 0.78, well above the threshold for a high-probability finish." }
+      ]
+    },
+    {
+      "id": "s003",
+      "title": "Tennis Finals - April 10",
+      "date": "2026-04-10T20:15:00Z",
+      "thumbnailUrl": "/thumbnails/tennis-april10.jpg",
+      "personalityName": "Dry Wit",
+      "personalityId": "p002",
+      "duration": "00:03:30",
+      "commentaryCount": 8,
+      "entries": [
+        { "timestamp": "00:00:45", "text": "Well. That serve certainly traveled... eventually. One assumes the ball was aiming for the service box, but it appears to have had other plans." },
+        { "timestamp": "00:02:00", "text": "And that's the match. The player celebrated as though he'd just discovered fire, rather than simply returning a tennis ball over a net. Remarkable enthusiasm for a sport that largely involves standing still." }
+      ]
+    },
+    {
+      "id": "s004",
+      "title": "Youth Baseball - April 15",
+      "date": "2026-04-15T12:00:00Z",
+      "thumbnailUrl": "/thumbnails/baseball-april15.jpg",
+      "personalityName": "Supportive Sideline",
+      "personalityId": "p005",
+      "duration": "00:06:20",
+      "commentaryCount": 15,
+      "entries": [
+        { "timestamp": "00:01:10", "text": "What fantastic effort from this young player! Did you see the technique they're working on? That's exactly the right approach — keep your eye on the ball, great form!" },
+        { "timestamp": "00:03:45", "text": "Beautiful fielding! Look at that footwork — nice and balanced, ready for the throw. Every practice is building this player's confidence and skills!" },
+        { "timestamp": "00:05:50", "text": "And that's the inning! Great job by the whole team on communication. I love seeing players calling out to each other — that's how you build as a team!" }
+      ]
+    },
+    {
+      "id": "s005",
+      "title": "Esports Tournament - April 20",
+      "date": "2026-04-20T18:00:00Z",
+      "thumbnailUrl": "/thumbnails/esports-april20.jpg",
+      "personalityName": "Hype Machine",
+      "personalityId": "p004",
+      "duration": "00:10:05",
+      "commentaryCount": 25,
+      "entries": [
+        { "timestamp": "00:00:15", "text": "OH MY GOODNESS! DID YOU SEE THAT INCREDIBLE PLAY?! The reflexes on this player are UNBELIEVABLE! We are WITNESSING HISTORY folks!" },
+        { "timestamp": "00:05:30", "text": "WHAT A CLUTCH MOMENT! The crowd is going WILD! This is the stuff of LEGENDS! INCREDIBLE!!!" },
+        { "timestamp": "00:09:45", "text": "AND THAT'S THE VICTORY! CHAMPIONS! They've done it! The trophy is THEIRS! UNBELIEVABLE SCENES!!!" }
+      ]
+    }
+  ]
+}
