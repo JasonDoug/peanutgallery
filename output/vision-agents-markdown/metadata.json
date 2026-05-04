@@ -1,0 +1,8 @@
+{
+  "platform": "markdown",
+  "name": "vision-agents",
+  "version": "1.0.0",
+  "created_with": "skill-seekers",
+  "format": "universal_markdown",
+  "usage": "Use with any LLM or documentation system"
+}

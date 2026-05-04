@@ -1,0 +1,17 @@
+# Typography Configuration
+
+## Google Fonts Import
+
+Add to your HTML `<head>` or CSS:
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+```
+
+## Font Usage
+
+- **Headings:** Space Grotesk
+- **Body text:** Inter
+- **Code/technical:** JetBrains Mono

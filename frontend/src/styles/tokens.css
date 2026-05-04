@@ -1,0 +1,13 @@
+/* Design Tokens for PeanutGallery */
+
+:root {
+  /* Colors */
+  --color-primary: theme('colors.rose.600');
+  --color-secondary: theme('colors.amber.500');
+  --color-neutral: theme('colors.zinc.500');
+
+  /* Typography */
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
