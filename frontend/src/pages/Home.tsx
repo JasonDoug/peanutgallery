@@ -27,43 +27,50 @@ export default function Home() {
   }, [])
 
   const handleAgentSelect = (agentId: string) => {
-    if (!data) return
-    setData({
-      ...data,
+    setData(prev => prev ? ({
+      ...prev,
       activeSession: {
-        ...data.activeSession,
+        ...prev.activeSession,
         agentId,
       },
-    })
+    }) : prev)
   }
 
   const handleVoiceSelect = (voiceId: string) => {
-    if (!data) return
-    setData({
-      ...data,
+    setData(prev => prev ? ({
+      ...prev,
       activeSession: {
-        ...data.activeSession,
+        ...prev.activeSession,
         voiceId,
       },
-    })
+    }) : prev)
   }
 
   const handleVideoUrlSubmit = (url: string) => {
-    if (!data) return
     const newSource: VideoSource = {
       id: `vid-${Date.now()}`,
       type: 'url',
       url,
       title: url.split('/').pop() || 'New Video',
     }
-    setData({
-      ...data,
-      videoSources: [...data.videoSources, newSource],
+    setData(prev => prev ? ({
+      ...prev,
+      videoSources: [...prev.videoSources, newSource],
       activeSession: {
-        ...data.activeSession,
+        ...prev.activeSession,
         videoSourceId: newSource.id,
       },
-    })
+    }) : prev)
+  }
+
+  const handleSourceSelect = (id: string) => {
+    setData(prev => prev ? ({
+      ...prev,
+      activeSession: {
+        ...prev.activeSession,
+        videoSourceId: id,
+      },
+    }) : prev)
   }
 
   const handleStartCommentary = async () => {
@@ -163,6 +170,7 @@ export default function Home() {
       onAgentSelect={handleAgentSelect}
       onVoiceSelect={handleVoiceSelect}
       onVideoUrlSubmit={handleVideoUrlSubmit}
+      onSourceSelect={handleSourceSelect}
       onStartCommentary={handleStartCommentary}
       onTogglePlayback={handleTogglePlayback}
     />

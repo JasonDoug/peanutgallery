@@ -59,6 +59,8 @@ export interface CoreCommentaryEngineProps {
   onVideoUrlSubmit?: (url: string) => void
   /** Called when the user uploads a video file */
   onVideoUpload?: (file: File) => void
+  /** Called when the user selects a video source */
+  onSourceSelect?: (sourceId: string) => void
   /** Called when the user clicks "Start Commentary" to launch playback */
   onStartCommentary?: () => void
   /** Called when the user toggles play/pause during playback */

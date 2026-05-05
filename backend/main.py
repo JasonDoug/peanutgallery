@@ -173,21 +173,33 @@ def delete_personality(
 
 @app.websocket("/api/sessions/{session_id}/ws")
 async def session_websocket(websocket: WebSocket, session_id: str):
+    # Finding 1: Check session existence
+    with Session(engine) as session:
+        db_session = session.get(CommentarySession, session_id)
+        if not db_session:
+            await websocket.close(code=4004) # Not Found
+            return
+
     await websocket.accept()
     logger.info(f"WebSocket connected for session {session_id}")
     
+    # KEEPALIVE_TIMEOUT = 30.0
     try:
-        while True:
-            # Check for new commentary from the engine
-            if pg_engine and session_id in pg_engine.active_sessions:
-                # This is a stub for the event push logic
-                pass
-            
-            # Simple keep-alive
-            try:
-                await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
-            except asyncio.TimeoutError:
-                pass
+        # Finding 1: Drain the per-session asyncio.Queue from the engine
+        if pg_engine and session_id in pg_engine.active_sessions:
+            queue = pg_engine.active_sessions[session_id]["queue"]
+            while True:
+                try:
+                    # Wait for an event with a timeout for keep-alive pings
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    await websocket.send_json(event)
+                    queue.task_done()
+                except asyncio.TimeoutError:
+                    # Send a ping to keep the connection alive
+                    await websocket.send_json({"type": "ping"})
+        else:
+            logger.warning(f"No active engine session found for {session_id}")
+            await websocket.close(code=4000)
                 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for session {session_id}")
@@ -200,6 +212,10 @@ def list_history(session: Session = Depends(get_session)):
 
 @app.post("/api/sessions", response_model=CommentarySession)
 async def create_session(session_req: CommentarySessionCreate, session: Session = Depends(get_session)):
+    # Finding 2: Fail-fast if engine is missing
+    if not pg_engine:
+        raise HTTPException(status_code=503, detail="Commentary engine not available. Check environment variables.")
+
     personality = session.get(Personality, session_req.personalityId)
     if not personality:
         raise HTTPException(status_code=404, detail="Personality not found")
@@ -215,14 +231,17 @@ async def create_session(session_req: CommentarySessionCreate, session: Session 
     session.refresh(db_session)
 
     try:
-        if pg_engine:
-            await pg_engine.create_riff_agent(db_session.id, personality.id, personality.systemPrompt)
-            task = asyncio.create_task(pg_engine.run_file_lookahead(db_session.id, db_session.videoSource))
-            pg_engine.active_sessions[db_session.id]["task"] = task
+        # Initialize Riff Agent with per-session isolation
+        await pg_engine.create_riff_agent(db_session.id, personality.id, personality.systemPrompt)
+        
+        # Start Lookahead Task
+        task = asyncio.create_task(pg_engine.run_file_lookahead(db_session.id, db_session.videoSource))
+        pg_engine.active_sessions[db_session.id]["task"] = task
         
         return db_session
     except Exception as e:
         logger.error(f"Failed to start session engine: {e}")
+        # Finding 2: Rollback/Cleanup on failure
         session.delete(db_session)
         session.commit()
         raise HTTPException(status_code=500, detail=str(e)) from e

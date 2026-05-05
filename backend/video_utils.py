@@ -25,21 +25,23 @@ class FileFrameExtractor:
 
     def get_frame_at_timestamp(self, timestamp_seconds: float) -> Optional[Image.Image]:
         """
-        Seeks to the given timestamp using the stream timebase.
+        Seeks to the given timestamp and extracts the exact frame by checking PTS.
         """
         if not self.container:
             return None
 
         try:
             video_stream = self.container.streams.video[0]
-            # Convert seconds to the stream's timebase (Ticket CodeRabbit fix)
+            # Convert seconds to the stream's timebase
             target_ts = int(timestamp_seconds / video_stream.time_base)
             
+            # Seek to keyframe before or at target
             self.container.seek(target_ts, any_frame=False, backward=True, stream=video_stream)
 
-            # Read the next frame
-            for frame in self.container.decode(video=0):
-                return frame.to_image()
+            # Decode until we find the frame that matches or exceeds target_ts
+            for frame in self.container.decode(video_stream):
+                if frame.pts is not None and frame.pts >= target_ts:
+                    return frame.to_image()
         except Exception as e:
             logger.error(f"Error extracting frame at {timestamp_seconds}s: {e}")
             return None

@@ -12,6 +12,7 @@ export function SetupScreen({
   onVoiceSelect,
   onVideoUrlSubmit,
   onVideoUpload,
+  onSourceSelect,
   onStartCommentary,
   onTogglePlayback,
 }: CoreCommentaryEngineProps) {
@@ -26,7 +27,16 @@ export function SetupScreen({
   const { jokes } = useCommentaryAudio(activeSession.sessionId ?? null)
 
   const activeSource = videoSources.find(s => s.id === activeSession.videoSourceId)
-  const isYouTube = activeSource?.url?.includes('youtube.com') || activeSource?.url?.includes('youtu.be')
+  
+  // Finding 4: Robust YouTube ID extraction
+  const extractYouTubeId = (url?: string) => {
+    if (!url) return null;
+    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[7].length === 11) ? match[7] : null;
+  }
+  
+  const youtubeId = extractYouTubeId(activeSource?.url);
 
   return (
     <div className="min-h-screen bg-zinc-950 relative overflow-hidden">
@@ -70,8 +80,8 @@ export function SetupScreen({
             onUrlSubmit={(url) => onVideoUrlSubmit?.(url)}
             onUpload={(file) => onVideoUpload?.(file)}
             onSelect={(id) => {
-              // Select the source (Ticket nitpick: ensure state update)
-              onAgentSelect?.(id) 
+              // Finding 5: Correct prop usage
+              onSourceSelect?.(id) 
             }}
           />
         </section>
@@ -119,9 +129,9 @@ export function SetupScreen({
             {/* Simple Video Player for Demo */}
             {activeSource && (
               <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl">
-                {isYouTube ? (
+                {youtubeId ? (
                   <iframe
-                    src={`https://www.youtube.com/embed/${activeSource.url?.split('v=')[1]?.split('&')[0]}`}
+                    src={`https://www.youtube.com/embed/${youtubeId}`}
                     className="w-full h-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
