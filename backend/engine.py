@@ -5,6 +5,7 @@ import os
 import httpx
 import json
 import re
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Deque, Dict
 from collections import deque
@@ -12,8 +13,9 @@ from pydantic import ValidationError
 
 from vision_agents.core import Agent, User
 from vision_agents.core.stt.events import STTTranscriptEvent
-from vision_agents.plugins import getstream, fast_whisper, openai # Using openai plugin for OpenRouter
+from vision_agents.plugins import getstream, fast_whisper, openai, moondream
 from models import JokeResponse, JokeCandidate
+from video_utils import FileFrameExtractor, YouTubeIngestor
 
 # Custom Kokoro Remote TTS if needed, otherwise local
 try:
@@ -86,6 +88,10 @@ class PeanutGalleryEngine:
         self.device = os.environ.get("DEVICE", "cpu")
         self.remote_tts = KokoroRemoteCaller(kokoro_url) if kokoro_url else None
         self.active_sessions: Dict[str, Dict] = {}
+        
+        # Shared VLM with Lock (or one per session)
+        self.vlm = moondream.LocalVLM(device=self.device)
+        self.vlm_lock = asyncio.Lock()
 
     async def close(self):
         if self.remote_tts:
@@ -134,14 +140,16 @@ class PeanutGalleryEngine:
         self.active_sessions[session_id] = {
             "agent": agent,
             "context": context,
-            "task": None
+            "task": None,
+            "queue": asyncio.Queue()
         }
 
         return agent
 
-    async def run_file_lookahead(self, session_id: str, video_path: str):
+    async def run_file_lookahead(self, session_id: str, video_source: str):
         """
-        Processes a local video file 60s ahead of 'current_time'.
+        Processes a video (file or URL) 60s ahead of 'current_time'.
+        (Ticket BE-001 & BE-002)
         """
         session = self.active_sessions.get(session_id)
         if not session:
@@ -149,33 +157,70 @@ class PeanutGalleryEngine:
 
         agent = session["agent"]
         context = session["context"]
+        queue = session["queue"]
 
-        logger.info(f"Starting lookahead processing for {video_path}")
+        # Resolve URL if YouTube (Case-insensitive check)
+        video_path = video_source
+        if "youtube.com" in video_source.lower() or "youtu.be" in video_source.lower():
+            logger.info(f"Resolving YouTube stream for {video_source}")
+            video_path = await asyncio.to_thread(YouTubeIngestor.get_stream_url, video_source)
+            if not video_path:
+                logger.error("Failed to resolve YouTube stream.")
+                return
+
+        logger.info(f"Starting real lookahead processing for {video_path}")
         
         try:
-            last_joke_time = datetime.now(timezone.utc)
+            start_time = datetime.now(timezone.utc)
+            last_joke_time = start_time
             
-            while session_id in self.active_sessions:
-                # 1. Simulate Vision Extraction (STUB)
-                logger.debug("Simulating vision extraction (lookahead +60s)")
-                context.add_scene("A group of characters is walking into a dark mansion. One is holding a flashlight.")
+            # Start seeking 60 seconds into the video
+            lookahead_offset = 60.0 
+            
+            with FileFrameExtractor(video_path) as extractor:
+                while session_id in self.active_sessions:
+                    # Calculate current virtual video time based on wall clock
+                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+                    lookahead_ts = elapsed + lookahead_offset
+                    
+                    # 1. Real Vision Extraction (Wrapped in thread)
+                    frame = await asyncio.to_thread(extractor.get_frame_at_timestamp, lookahead_ts)
+                    if frame:
+                        # Moondream analysis (Protected by lock)
+                        async with self.vlm_lock:
+                            description = await self.vlm.describe(frame)
+                        logger.debug(f"Lookahead ({lookahead_ts}s) Scene: {description}")
+                        context.add_scene(description)
+                    else:
+                        logger.warning(f"Failed to extract frame at {lookahead_ts}s")
+                    
+                    # 2. Check if it's time for a joke
+                    if datetime.now(timezone.utc) - last_joke_time > timedelta(seconds=25):
+                        joke_text = await self.generate_and_score_joke(session_id)
+                        if joke_text:
+                            logger.info(f"Generated Riff: {joke_text}")
+                            
+                            audio_b64 = None
+                            # 3. Synthesize Voice
+                            if self.remote_tts:
+                                audio_data = await self.remote_tts.generate_speech(joke_text)
+                                if audio_data:
+                                    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+                            
+                            # 4. Push to Queue for WebSocket
+                            await queue.put({
+                                "type": "commentary",
+                                "payload": {
+                                    "id": str(random.getrandbits(64)),
+                                    "text": joke_text,
+                                    "audio_b64": audio_b64,
+                                    "timestamp": str(timedelta(seconds=lookahead_ts))
+                                }
+                            })
+                            
+                            last_joke_time = datetime.now(timezone.utc)
                 
-                # 2. Check if it's time for a joke
-                if datetime.now(timezone.utc) - last_joke_time > timedelta(seconds=25):
-                    joke_text = await self.generate_and_score_joke(session_id)
-                    if joke_text:
-                        logger.info(f"Generated Riff: {joke_text}")
-                        
-                        # 3. Synthesize Voice
-                        if self.remote_tts:
-                            audio_data = await self.remote_tts.generate_speech(joke_text)
-                            # TODO: Implement GetStream publish path for remote audio
-                            if audio_data:
-                                logger.info(f"Synthesized remote audio: {len(audio_data)} bytes")
-                        
-                        last_joke_time = datetime.now(timezone.utc)
-                
-                await asyncio.sleep(5)
+                    await asyncio.sleep(5) 
         except asyncio.CancelledError:
             logger.info(f"Lookahead task for session {session_id} cancelled.")
         except Exception as e:
