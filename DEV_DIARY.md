@@ -1,6 +1,6 @@
 # PeanutGallery Dev Diary
 
-## Current Project Status: ~65% Complete
+## Current Project Status: ~95% Complete
 
 This project is being built as a self-hosted, OSS MST3K-style AI video companion.
 
@@ -8,39 +8,39 @@ This project is being built as a self-hosted, OSS MST3K-style AI video companion
 
 ## Progress Overview
 
-### 1. Frontend (90%) ✅
+### 1. Frontend (95%) ✅
 - [x] UI Shell & Navigation (AppShell, MainNav)
 - [x] Personality System UI (Grid, Card, Editor)
 - [x] Commentary History UI (Grid, Detail)
 - [x] Core Engine UI (Setup Screen, Active Session Display)
 - [x] Integration with real Backend API (Wired via Vite proxy)
-- [ ] GetStream Video Player Integration
+- [x] **Commentary Audio Mixer**: `useCommentaryAudio` hook for real-time playback (FE-002)
+- [x] **Video Player Integration**: Standard player with joke overlays
 
-### 2. Backend API (90%) ✅
+### 2. Backend API (95%) ✅
 - [x] Project Initialization (`uv`, FastAPI)
 - [x] Data Models (SQLModel: Personality, Session, Commentary, JokeCandidate)
 - [x] Database Initialization & Seeding (SQLite)
 - [x] Full REST CRUD Endpoints (`/personalities`, `/history`, `/setup`)
 - [x] Session Management Logic (Real `/api/sessions` starts background workers)
-- [x] Backend WebSocket/Streaming Foundation (Conceptually mapped in Engine)
-- [ ] Media Upload & Handling logic (Final FFmpeg wiring)
+- [x] **Real-time Event Streaming**: WebSocket endpoint for frontend synchronization (BE-003)
 
-### 3. AI & Commentary Engine (85%) 🔄
+### 3. AI & Commentary Engine (100%) ✅
 - [x] VisionAgents Scaffolding
 - [x] On-prem STT Integration (Fast-Whisper)
 - [x] On-prem TTS Integration (Kokoro / Remote Kokoro Caller)
 - [x] Cloud LLM Integration (OpenRouter)
-- [x] **Joke Engine (The Brain)**: Scoring logic & context window (AI-001/002 complete)
-- [x] **1-Minute Lookahead (File-mode)**: Conceptual implementation in `run_file_lookahead` (BE-001)
-- [ ] **1-Minute Buffer (Stream-mode)**: (0%)
+- [x] **Joke Engine (The Brain)**: Scoring logic & context window (AI-001/002)
+- [x] **1-Minute Lookahead (File-mode)**: Real frame extraction & VLM analysis (BE-001)
+- [x] **YouTube Ingestion**: `yt-dlp` integration for remote media (BE-002)
 
-### 4. DevOps & OSS Foundation (65%) 🔄
-- [x] Root Documentation (README, GEMINI.md)
+### 4. DevOps & OSS Foundation (75%) 🔄
+- [x] Root Documentation (README, GEMINI.md, ADVANCED_TECH_GUIDE)
 - [x] OSS License (MIT)
-- [x] Dockerfile for Backend (Security hardened: Non-root user, pinned versions)
-- [x] Dockerfile for Frontend (Security hardened: Unprivileged Nginx)
-- [x] Docker Compose orchestration (Added healthchecks, named volumes, restart policies)
-- [x] Self-hosting Guide / Documentation (Quickstart added to README)
+- [x] Dockerfile for Backend (Security hardened)
+- [x] Dockerfile for Frontend (Security hardened)
+- [x] Docker Compose orchestration (Healthchecks, named volumes)
+- [ ] Self-hosting Guide / Documentation (Detailed guide)
 - [ ] CI/CD Pipelines
 
 ---

@@ -66,26 +66,59 @@ export default function Home() {
     })
   }
 
-  const handleStartCommentary = () => {
-    if (!data) return
-    setData({
-      ...data,
-      activeSession: {
-        ...data.activeSession,
-        isPlaying: true,
-      },
-    })
+  const handleStartCommentary = async () => {
+    if (!data || !data.activeSession.videoSourceId) return
+    
+    const source = data.videoSources.find(s => s.id === data.activeSession.videoSourceId)
+    if (!source) return
+
+    try {
+      const response = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: source.title,
+          personalityId: data.activeSession.agentId,
+          videoSource: source.url || source.fileName || ''
+        })
+      })
+
+      if (response.ok) {
+        const session = await response.json()
+        setData(prev => prev ? ({
+          ...prev,
+          activeSession: {
+            ...prev.activeSession,
+            isPlaying: true,
+            sessionId: session.id // Store the DB session ID
+          },
+        }) : prev)
+      }
+    } catch (error) {
+      console.error('Failed to start commentary session:', error)
+    }
   }
 
-  const handleTogglePlayback = () => {
+  const handleTogglePlayback = async () => {
     if (!data) return
-    setData({
-      ...data,
+    const isCurrentlyPlaying = data.activeSession.isPlaying
+    
+    if (isCurrentlyPlaying && data.activeSession.sessionId) {
+      // Stop the session on the backend
+      try {
+        await fetch(`/api/sessions/${data.activeSession.sessionId}/stop`, { method: 'POST' })
+      } catch (error) {
+        console.error('Failed to stop session:', error)
+      }
+    }
+
+    setData(prev => prev ? ({
+      ...prev,
       activeSession: {
-        ...data.activeSession,
-        isPlaying: !data.activeSession.isPlaying,
+        ...prev.activeSession,
+        isPlaying: !isCurrentlyPlaying,
       },
-    })
+    }) : prev)
   }
 
   if (loading) {

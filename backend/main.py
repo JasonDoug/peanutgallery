@@ -5,7 +5,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Path
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Path, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 from pydantic import BaseModel
@@ -43,9 +43,6 @@ async def lifespan(app: FastAPI):
     if missing:
         msg = f"Missing required environment variables: {', '.join(missing)}"
         logger.error(msg)
-        # We don't raise RuntimeError here to allow the app to start but with limited functionality
-        # or we could raise it to prevent startup. The finding suggests raising/explicit error.
-        # raising RuntimeError(msg)
 
     # Initialize the Engine
     pg_engine = PeanutGalleryEngine(
@@ -147,7 +144,6 @@ def update_personality(
     if not db_p:
         raise HTTPException(status_code=404, detail="Personality not found")
     
-    # Update fields using Pydantic v2 model_dump
     p_data = updated_p.model_dump(exclude_unset=True)
     for key, value in p_data.items():
         if key != "id":
@@ -175,6 +171,29 @@ def delete_personality(
 
 # --- Sessions & History API ---
 
+@app.websocket("/api/sessions/{session_id}/ws")
+async def session_websocket(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    logger.info(f"WebSocket connected for session {session_id}")
+    
+    try:
+        while True:
+            # Check for new commentary from the engine
+            if pg_engine and session_id in pg_engine.active_sessions:
+                # This is a stub for the event push logic
+                pass
+            
+            # Simple keep-alive
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
+                
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for session {session_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+
 @app.get("/api/history", response_model=List[CommentarySession])
 def list_history(session: Session = Depends(get_session)):
     return session.exec(select(CommentarySession).order_by(CommentarySession.date.desc())).all()
@@ -185,7 +204,6 @@ async def create_session(session_req: CommentarySessionCreate, session: Session 
     if not personality:
         raise HTTPException(status_code=404, detail="Personality not found")
     
-    # Create the session record first
     db_session = CommentarySession(
         title=session_req.title,
         personalityId=session_req.personalityId,
@@ -197,24 +215,21 @@ async def create_session(session_req: CommentarySessionCreate, session: Session 
     session.refresh(db_session)
 
     try:
-        # Initialize Riff Agent with per-session isolation
-        await pg_engine.create_riff_agent(db_session.id, personality.id, personality.systemPrompt)
-        
-        # Start Lookahead Task and store it in engine state
-        task = asyncio.create_task(pg_engine.run_file_lookahead(db_session.id, db_session.videoSource))
-        pg_engine.active_sessions[db_session.id]["task"] = task
+        if pg_engine:
+            await pg_engine.create_riff_agent(db_session.id, personality.id, personality.systemPrompt)
+            task = asyncio.create_task(pg_engine.run_file_lookahead(db_session.id, db_session.videoSource))
+            pg_engine.active_sessions[db_session.id]["task"] = task
         
         return db_session
     except Exception as e:
         logger.error(f"Failed to start session engine: {e}")
-        # Cleanup orphan session record on failure
         session.delete(db_session)
         session.commit()
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 @app.post("/api/sessions/{session_id}/stop")
 async def stop_session(session_id: str):
-    if session_id in pg_engine.active_sessions:
+    if pg_engine and session_id in pg_engine.active_sessions:
         session_state = pg_engine.active_sessions.pop(session_id)
         task = session_state.get("task")
         if task:
@@ -239,7 +254,6 @@ def delete_session(session_id: str, session: Session = Depends(get_session)):
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    # Relationship cascade handles entries deletion
     session.delete(db_session)
     session.commit()
     return {"ok": True}

@@ -4,6 +4,7 @@ import { AgentSelector } from './AgentSelector'
 import { VoiceSelector } from './VoiceSelector'
 import { ActiveSessionDisplay } from './ActiveSessionDisplay'
 import { PlayCircle, Sparkles } from 'lucide-react'
+import { useCommentaryAudio } from '../../lib/useCommentaryAudio'
 
 export function SetupScreen({
   data,
@@ -14,12 +15,17 @@ export function SetupScreen({
   onStartCommentary,
   onTogglePlayback,
 }: CoreCommentaryEngineProps) {
-  const { agents, voices, activeSession } = data
+  const { agents, voices, activeSession, videoSources } = data
   const selectedAgentId = activeSession.agentId
   const selectedAgent = agents.find(a => a.id === selectedAgentId)
   const selectedVoiceId = selectedAgent?.voiceId ?? activeSession.voiceId
 
   const canStart = activeSession.videoSourceId && selectedAgentId
+
+  // Use the commentary audio hook (FE-002)
+  const { jokes } = useCommentaryAudio((activeSession as any).sessionId)
+
+  const activeSource = videoSources.find(s => s.id === activeSession.videoSourceId)
 
   return (
     <div className="min-h-screen bg-zinc-950 relative overflow-hidden">
@@ -63,7 +69,7 @@ export function SetupScreen({
             onUrlSubmit={(url) => onVideoUrlSubmit?.(url)}
             onUpload={(file) => onVideoUpload?.(file)}
             onSelect={(id) => {
-              // In a real app, this would update activeSession.videoSourceId
+              // This should be handled by the parent
               console.log('Select source:', id)
             }}
           />
@@ -101,31 +107,54 @@ export function SetupScreen({
 
         {/* Active Session Display */}
         {activeSession.isPlaying && (
-          <section>
+          <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <ActiveSessionDisplay
               session={activeSession}
               agents={agents}
               voices={voices}
               onTogglePlayback={onTogglePlayback}
             />
+            
+            {/* Simple Video Player for Demo */}
+            {activeSource && (
+              <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl">
+                <video
+                  src={activeSource.url}
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                />
+                
+                {/* Last Joke Overlay */}
+                {jokes.length > 0 && (
+                  <div className="absolute bottom-12 left-0 right-0 p-4 bg-black/60 backdrop-blur-md border-t border-zinc-700/50 animate-in slide-in-from-bottom-full duration-300">
+                    <p className="text-zinc-100 text-center font-['Space_Grotesk'] text-sm md:text-base leading-relaxed">
+                      {jokes[jokes.length - 1].text}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
 
         {/* Start Button */}
         <div className="pt-4">
-          <button
-            disabled={!canStart}
-            onClick={() => onStartCommentary?.()}
-            className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold font-['Space_Grotesk'] tracking-wide transition-all ${
-              canStart
-                ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-[0_0_25px_rgba(244,63,94,0.25)] hover:shadow-[0_0_35px_rgba(244,63,94,0.35)] hover:scale-[1.01]'
-                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-            }`}
-          >
-            <PlayCircle size={18} />
-            Start Commentary
-          </button>
-          {!canStart && (
+          {!activeSession.isPlaying && (
+            <button
+              disabled={!canStart}
+              onClick={() => onStartCommentary?.()}
+              className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold font-['Space_Grotesk'] tracking-wide transition-all ${
+                canStart
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-[0_0_25px_rgba(244,63,94,0.25)] hover:shadow-[0_0_35px_rgba(244,63,94,0.35)] hover:scale-[1.01]'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              }`}
+            >
+              <PlayCircle size={18} />
+              Start Commentary
+            </button>
+          )}
+          {!canStart && !activeSession.isPlaying && (
             <p className="text-center text-xs text-zinc-600 mt-2">
               Select a video and agent to begin
             </p>
