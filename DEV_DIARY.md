@@ -33,13 +33,13 @@ This project is being built as a self-hosted, OSS MST3K-style AI video companion
 - [ ] **1-Minute Lookahead (File-mode)**: (0%)
 - [ ] **1-Minute Buffer (Stream-mode)**: (0%)
 
-### 4. DevOps & OSS Foundation (50%) 🔄
+### 4. DevOps & OSS Foundation (65%) 🔄
 - [x] Root Documentation (README, GEMINI.md)
 - [x] OSS License (MIT)
-- [x] Dockerfile for Backend
-- [x] Dockerfile for Frontend
-- [x] Docker Compose orchestration
-- [ ] Self-hosting Guide / Documentation
+- [x] Dockerfile for Backend (Security hardened: Non-root user, pinned versions)
+- [x] Dockerfile for Frontend (Security hardened: Unprivileged Nginx)
+- [x] Docker Compose orchestration (Added healthchecks, named volumes, restart policies)
+- [x] Self-hosting Guide / Documentation (Quickstart added to README)
 - [ ] CI/CD Pipelines
 
 ---

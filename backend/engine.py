@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import random
+import os
 from datetime import datetime, timedelta
 from typing import List, Optional
 
 from vision_agents.core import Agent, User
+from vision_agents.core.stt.events import STTTranscriptEvent
 from vision_agents.plugins import getstream, fast_whisper, openai # Using openai plugin for OpenRouter
 
 # Custom Kokoro Remote TTS if needed, otherwise local
@@ -22,6 +24,9 @@ class PeanutGalleryEngine:
         self.stream_secret = stream_secret
         self.kokoro_url = kokoro_url # If using remote server
         self.agent: Optional[Agent] = None
+        self.device = os.environ.get("DEVICE", "cpu")
+        # Buffer for STT transcript (last 2 minutes)
+        self.transcript_buffer = []
 
     async def create_riff_agent(self, personality_id: str, system_prompt: str) -> Agent:
         """
@@ -35,11 +40,11 @@ class PeanutGalleryEngine:
         )
 
         # STT for dialog understanding (Local On-prem)
-        stt = fast_whisper.STT(model_size="base")
+        stt = fast_whisper.STT(model_size="base", device=self.device)
 
         # TTS (Local or Remote Kokoro)
         # TODO: Implement remote kokoro caller if self.kokoro_url is set
-        tts = kokoro.TTS() if kokoro else None
+        tts = kokoro.TTS(device=self.device) if kokoro else None
 
         self.agent = Agent(
             edge=getstream.Edge(api_key=self.stream_key, api_secret=self.stream_secret),
@@ -50,11 +55,8 @@ class PeanutGalleryEngine:
             tts=tts,
         )
 
-        # Buffer for STT transcript (last 60s)
-        self.transcript_buffer = []
-
         @self.agent.events.subscribe
-        async def on_transcript(event: fast_whisper.TranscriptEvent):
+        async def on_transcript(event: STTTranscriptEvent):
             self.transcript_buffer.append({
                 "text": event.text,
                 "timestamp": datetime.now()

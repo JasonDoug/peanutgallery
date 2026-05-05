@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from sqlmodel import SQLModel, Field, Column, JSON
 import uuid
@@ -23,7 +23,7 @@ class Personality(SQLModel, table=True):
     usageCount: int = 0
     averageRating: float = 0.0
     lastUsed: Optional[datetime] = None
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CommentaryEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -34,7 +34,7 @@ class CommentaryEntry(SQLModel, table=True):
 class CommentarySession(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     title: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     thumbnailUrl: Optional[str] = None
     personalityName: str
     personalityId: str

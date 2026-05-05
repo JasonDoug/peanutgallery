@@ -23,4 +23,18 @@ PeanutGallery is a self-hosted, open-source AI video companion that provides MST
 
 ## Getting Started
 
-*(Instructions for self-hosting with Docker Compose coming soon)*
+The easiest way to run PeanutGallery is using Docker Compose:
+
+1. **Prerequisites**: Ensure you have [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) installed.
+2. **Configuration**: 
+   - Copy `backend/.env.example` to `backend/.env`.
+   - Add your `OPENROUTER_API_KEY`, `STREAM_API_KEY`, and `STREAM_API_SECRET`.
+3. **Run**:
+   ```bash
+   docker compose up --build
+   ```
+4. **Access**:
+   - Frontend: [http://localhost:3000](http://localhost:3000)
+   - API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+To stop the application, use `Ctrl+C` or `docker compose down`.

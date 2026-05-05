@@ -1,3 +1,5 @@
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
@@ -8,31 +10,42 @@ import os
 from .database import engine, init_db, get_session
 from .models import Personality, CommentarySession, CommentaryEntry
 
-app = FastAPI(title="PeanutGallery API")
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    init_db()
+    # Seed presets if empty
+    with Session(engine) as session:
+        statement = select(Personality).where(Personality.isPreset)
+        results = session.exec(statement).all()
+        if not results:
+            seed_presets(session)
+    yield
+    # Shutdown logic (if any)
+
+app = FastAPI(title="PeanutGallery API", lifespan=lifespan)
 
 # Configure CORS for frontend development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this
+    allow_origins=["http://localhost:3000", "http://localhost:5173"], 
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    # Seed presets if empty
-    with Session(engine) as session:
-        statement = select(Personality).where(Personality.isPreset == True)
-        results = session.exec(statement).all()
-        if not results:
-            seed_presets(session)
 
 def seed_presets(session: Session):
     try:
-        # Navigate to the frontend's public directory to get the presets
-        json_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "personalities-data.json")
+        # Prefer PRESETS_PATH env var, fallback to local path
+        default_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "personalities-data.json")
+        json_path = os.environ.get("PRESETS_PATH", default_path)
+        
+        if not os.path.exists(json_path):
+            logger.warning(f"Presets file not found at {json_path}. Skipping seeding.")
+            return
+
         with open(json_path, "r") as f:
             data = json.load(f)
             for p_data in data.get("personalities", []):
@@ -62,8 +75,10 @@ def seed_presets(session: Session):
                     )
                     session.add(personality)
         session.commit()
+    except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
+        logger.error(f"Error seeding presets: {e}")
     except Exception as e:
-        print(f"Error seeding presets: {e}")
+        logger.error(f"Unexpected error seeding presets: {e}")
 
 @app.get("/api/personalities", response_model=List[Personality])
 def list_personalities(session: Session = Depends(get_session)):

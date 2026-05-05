@@ -4,17 +4,29 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/peanutgallery.db:/app/peanutgallery.db
+      - pg-data:/app/data
     env_file:
       - ./backend/.env
-    restart: always
+    environment:
+      - DATABASE_URL=sqlite:///./data/peanutgallery.db
+      - PRESETS_PATH=/app/personalities-data.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/personalities"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build: 
       context: ./frontend
-      dockerfile: Dockerfile # We'll need to create this
+      dockerfile: Dockerfile
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
-      - backend
-    restart: always
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg-data:
