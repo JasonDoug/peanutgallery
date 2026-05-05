@@ -1,0 +1,20 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/peanutgallery.db:/app/peanutgallery.db
+    env_file:
+      - ./backend/.env
+    restart: always
+
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile # We'll need to create this
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: always
