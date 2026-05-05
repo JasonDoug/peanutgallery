@@ -14,10 +14,13 @@ export default function Prompts() {
     const fetchData = async () => {
       try {
         const response = await fetch('/api/personalities')
+        if (!response.ok) {
+          throw new Error('Failed to fetch personalities')
+        }
         const jsonData = await response.json()
         setData({
           _meta: { models: {}, relationships: [] },
-          personalities: jsonData
+          personalities: Array.isArray(jsonData) ? jsonData : []
         })
       } catch (error) {
         console.error('Error fetching personality data:', error)
@@ -29,11 +32,17 @@ export default function Prompts() {
   }, [])
 
   const handleToggleActive = async (id: string, active: boolean) => {
-    if (!data) return
-    const personality = data.personalities.find(p => p.id === id)
-    if (!personality) return
-
     try {
+      // Find personality in the latest state to ensure accuracy
+      let personality: Personality | undefined;
+      setData(prev => {
+        if (!prev) return prev;
+        personality = prev.personalities.find(p => p.id === id);
+        return prev;
+      });
+
+      if (!personality) return;
+
       const response = await fetch(`/api/personalities/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -41,12 +50,12 @@ export default function Prompts() {
       })
       
       if (response.ok) {
-        setData({
-          ...data,
-          personalities: data.personalities.map(p => 
+        setData(prev => prev ? ({
+          ...prev,
+          personalities: prev.personalities.map(p => 
             p.id === id ? { ...p, active } : p
           )
-        })
+        }) : prev)
       }
     } catch (error) {
       console.error('Error updating personality:', error)
@@ -64,7 +73,6 @@ export default function Prompts() {
   }
 
   const handleSave = async (personality: Personality) => {
-    if (!data) return
     setIsSaving(true)
     
     try {
@@ -80,12 +88,12 @@ export default function Prompts() {
 
       if (response.ok) {
         const savedP = await response.json()
-        setData({
-          ...data,
+        setData(prev => prev ? ({
+          ...prev,
           personalities: isNew 
-            ? [...data.personalities, savedP]
-            : data.personalities.map(p => p.id === savedP.id ? savedP : p)
-        })
+            ? [...prev.personalities, savedP]
+            : prev.personalities.map(p => p.id === savedP.id ? savedP : p)
+        }) : prev)
         setEditingId(null)
       }
     } catch (error) {
@@ -96,16 +104,15 @@ export default function Prompts() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!data) return
     try {
       const response = await fetch(`/api/personalities/${id}`, {
         method: 'DELETE'
       })
       if (response.ok) {
-        setData({
-          ...data,
-          personalities: data.personalities.filter(p => p.id !== id)
-        })
+        setData(prev => prev ? ({
+          ...prev,
+          personalities: prev.personalities.filter(p => p.id !== id)
+        }) : prev)
       }
     } catch (error) {
       console.error('Error deleting personality:', error)

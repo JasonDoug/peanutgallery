@@ -1,29 +1,60 @@
 import logging
 import os
 import json
+import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Path
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
+from pydantic import BaseModel
 
-from .database import engine, init_db, get_session
-from .models import Personality, CommentarySession, CommentaryEntry
-from .engine import PeanutGalleryEngine
+from database import engine, init_db, get_session
+from models import (
+    Personality, 
+    CommentarySession, 
+    CommentaryEntry, 
+    CommentarySessionCreate,
+    JokeResponse,
+    JokeCandidate
+)
+from engine import PeanutGalleryEngine
 
 logger = logging.getLogger(__name__)
 
-# Initialize the Engine
-pg_engine = PeanutGalleryEngine(
-    api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-    stream_key=os.environ.get("STREAM_API_KEY", ""),
-    stream_secret=os.environ.get("STREAM_API_SECRET", ""),
-    kokoro_url=os.environ.get("KOKORO_SERVER_URL")
-)
+# Global engine instance (to be initialized in lifespan)
+pg_engine: Optional[PeanutGalleryEngine] = None
+
+class SetupResponse(BaseModel):
+    agents: List[dict]
+    voices: List[dict]
+    commentary: List[dict]
+    videoSources: List[dict]
+    activeSession: dict
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global pg_engine
+    
+    # Validate required environment variables
+    required_vars = ["OPENROUTER_API_KEY", "STREAM_API_KEY", "STREAM_API_SECRET"]
+    missing = [v for v in required_vars if not os.environ.get(v)]
+    if missing:
+        msg = f"Missing required environment variables: {', '.join(missing)}"
+        logger.error(msg)
+        # We don't raise RuntimeError here to allow the app to start but with limited functionality
+        # or we could raise it to prevent startup. The finding suggests raising/explicit error.
+        # raising RuntimeError(msg)
+
+    # Initialize the Engine
+    pg_engine = PeanutGalleryEngine(
+        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+        stream_key=os.environ.get("STREAM_API_KEY", ""),
+        stream_secret=os.environ.get("STREAM_API_SECRET", ""),
+        kokoro_url=os.environ.get("KOKORO_SERVER_URL")
+    )
+
     # Startup logic
     init_db()
     # Seed presets if empty
@@ -32,12 +63,16 @@ async def lifespan(app: FastAPI):
         results = session.exec(statement).all()
         if not results:
             seed_presets(session)
+    
     yield
-    # Shutdown logic (if any)
+    
+    # Shutdown logic
+    if pg_engine:
+        await pg_engine.close()
 
 app = FastAPI(title="PeanutGallery API", lifespan=lifespan)
 
-# Configure CORS for frontend development
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"], 
@@ -71,8 +106,10 @@ def seed_presets(session: Session):
                         systemPrompt=p_data["systemPrompt"],
                         temperature=p_data["temperature"],
                         model=p_data["model"],
+                        voiceId=p_data.get("voiceId", "af_heart"),
                         active=p_data["active"],
                         isPreset=True,
+                        isDefault=p_data.get("isDefault", False),
                         exampleOutputs=p_data.get("exampleOutputs", []),
                         forbiddenTopics=p_data.get("forbiddenTopics", []),
                         responseStyleExamples=p_data.get("responseStyleExamples", []),
@@ -101,12 +138,17 @@ def create_personality(personality: Personality, session: Session = Depends(get_
     return personality
 
 @app.put("/api/personalities/{id}", response_model=Personality)
-def update_personality(id: str, updated_p: Personality, session: Session = Depends(get_session)):
+def update_personality(
+    updated_p: Personality, 
+    id: str = Path(alias="id"),
+    session: Session = Depends(get_session)
+):
     db_p = session.get(Personality, id)
     if not db_p:
         raise HTTPException(status_code=404, detail="Personality not found")
     
-    p_data = updated_p.dict(exclude_unset=True)
+    # Update fields using Pydantic v2 model_dump
+    p_data = updated_p.model_dump(exclude_unset=True)
     for key, value in p_data.items():
         if key != "id":
             setattr(db_p, key, value)
@@ -117,7 +159,10 @@ def update_personality(id: str, updated_p: Personality, session: Session = Depen
     return db_p
 
 @app.delete("/api/personalities/{id}")
-def delete_personality(id: str, session: Session = Depends(get_session)):
+def delete_personality(
+    id: str = Path(alias="id"),
+    session: Session = Depends(get_session)
+):
     db_p = session.get(Personality, id)
     if not db_p:
         raise HTTPException(status_code=404, detail="Personality not found")
@@ -135,31 +180,49 @@ def list_history(session: Session = Depends(get_session)):
     return session.exec(select(CommentarySession).order_by(CommentarySession.date.desc())).all()
 
 @app.post("/api/sessions", response_model=CommentarySession)
-async def create_session(session_req: CommentarySession, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+async def create_session(session_req: CommentarySessionCreate, session: Session = Depends(get_session)):
     personality = session.get(Personality, session_req.personalityId)
     if not personality:
         raise HTTPException(status_code=404, detail="Personality not found")
     
+    # Create the session record first
+    db_session = CommentarySession(
+        title=session_req.title,
+        personalityId=session_req.personalityId,
+        personalityName=personality.name,
+        videoSource=session_req.videoSource
+    )
+    session.add(db_session)
+    session.commit()
+    session.refresh(db_session)
+
     try:
-        # Initialize Riff Agent (AI-001/002/003)
-        await pg_engine.create_riff_agent(personality.id, personality.systemPrompt)
+        # Initialize Riff Agent with per-session isolation
+        await pg_engine.create_riff_agent(db_session.id, personality.id, personality.systemPrompt)
         
-        # Start Lookahead (BE-001)
-        pg_engine.active_sessions[session_req.id] = True
-        background_tasks.add_task(pg_engine.run_file_lookahead, session_req.id, session_req.videoSource)
+        # Start Lookahead Task and store it in engine state
+        task = asyncio.create_task(pg_engine.run_file_lookahead(db_session.id, db_session.videoSource))
+        pg_engine.active_sessions[db_session.id]["task"] = task
         
-        session.add(session_req)
-        session.commit()
-        session.refresh(session_req)
-        return session_req
+        return db_session
     except Exception as e:
-        logger.error(f"Failed to start session: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to start session engine: {e}")
+        # Cleanup orphan session record on failure
+        session.delete(db_session)
+        session.commit()
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @app.post("/api/sessions/{session_id}/stop")
 async def stop_session(session_id: str):
     if session_id in pg_engine.active_sessions:
-        del pg_engine.active_sessions[session_id]
+        session_state = pg_engine.active_sessions.pop(session_id)
+        task = session_state.get("task")
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         return {"ok": True}
     raise HTTPException(status_code=404, detail="Active session not found")
 
@@ -175,6 +238,8 @@ def delete_session(session_id: str, session: Session = Depends(get_session)):
     db_session = session.get(CommentarySession, session_id)
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Relationship cascade handles entries deletion
     session.delete(db_session)
     session.commit()
     return {"ok": True}
@@ -189,7 +254,7 @@ def list_voices():
         {"id": "bf_emma", "name": "Emma (Female)", "provider": "kokoro", "gender": "female", "accent": "UK"},
     ]
 
-@app.get("/api/setup", response_model=dict)
+@app.get("/api/setup", response_model=SetupResponse)
 def get_setup(session: Session = Depends(get_session)):
     personalities = session.exec(select(Personality)).all()
     agents = [
@@ -197,9 +262,10 @@ def get_setup(session: Session = Depends(get_session)):
             "id": p.id,
             "name": p.name,
             "personality": p.description,
-            "voiceId": "af_heart",
+            "voiceId": p.voiceId,
             "temperature": p.temperature,
-            "isDefault": p.isPreset
+            "isDefault": p.isDefault,
+            "isPreset": p.isPreset
         } for p in personalities
     ]
     
@@ -210,8 +276,8 @@ def get_setup(session: Session = Depends(get_session)):
         "videoSources": [],
         "activeSession": {
             "videoSourceId": "",
-            "agentId": agents[0]["id"] if agents else "",
-            "voiceId": "af_heart",
+            "agentId": next((a["id"] for a in agents if a["isDefault"]), agents[0]["id"] if agents else ""),
+            "voiceId": next((a["voiceId"] for a in agents if a["isDefault"]), "af_heart"),
             "delaySeconds": 60,
             "volume": 80,
             "isPlaying": False

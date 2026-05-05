@@ -1,6 +1,6 @@
 # PeanutGallery Dev Diary
 
-## Current Project Status: ~35% Complete
+## Current Project Status: ~65% Complete
 
 This project is being built as a self-hosted, OSS MST3K-style AI video companion.
 

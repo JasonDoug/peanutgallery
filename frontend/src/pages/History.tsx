@@ -12,10 +12,17 @@ export default function History() {
     const fetchData = async () => {
       try {
         const response = await fetch('/api/history')
+        if (!response.ok) {
+          throw new Error('Failed to fetch history')
+        }
         const jsonData = await response.json()
         
+        if (!Array.isArray(jsonData)) {
+          throw new Error('History payload is not an array')
+        }
+
         // Add placeholder thumbnails if needed
-        const sessionsWithThumbnails = jsonData.map((s: any) => ({
+        const sessionsWithThumbnails = jsonData.map((s: CommentarySession) => ({
           ...s,
           thumbnailUrl: s.thumbnailUrl || `https://picsum.photos/seed/${s.id}/800/450`
         }))
@@ -26,6 +33,7 @@ export default function History() {
         })
       } catch (error) {
         console.error('Error fetching history data:', error)
+        setData({ _meta: { models: {}, relationships: [] }, sessions: [] })
       } finally {
         setLoading(false)
       }
