@@ -41,3 +41,16 @@ class CommentarySession(SQLModel, table=True):
     duration: str = "0:00"
     commentaryCount: int = 0
     videoSource: str # Local path or URL
+
+# Pydantic models for the Joke Engine
+from pydantic import BaseModel
+
+class JokeCandidate(BaseModel):
+    text: str
+    wit_score: int
+    timing_score: int
+    reasoning: str
+
+class JokeResponse(BaseModel):
+    candidates: List[JokeCandidate]
+    best_joke_index: int

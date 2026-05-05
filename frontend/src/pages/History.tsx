@@ -11,16 +11,19 @@ export default function History() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/history-data.json')
+        const response = await fetch('/api/history')
         const jsonData = await response.json()
         
         // Add placeholder thumbnails if needed
-        const sessionsWithThumbnails = jsonData.sessions.map((s: any) => ({
+        const sessionsWithThumbnails = jsonData.map((s: any) => ({
           ...s,
-          thumbnailUrl: `https://picsum.photos/seed/${s.id}/800/450`
+          thumbnailUrl: s.thumbnailUrl || `https://picsum.photos/seed/${s.id}/800/450`
         }))
 
-        setData({ ...jsonData, sessions: sessionsWithThumbnails })
+        setData({ 
+          _meta: { models: {}, relationships: [] },
+          sessions: sessionsWithThumbnails 
+        })
       } catch (error) {
         console.error('Error fetching history data:', error)
       } finally {
@@ -30,14 +33,23 @@ export default function History() {
     fetchData()
   }, [])
 
-  const handleDeleteSession = (id: string) => {
+  const handleDeleteSession = async (id: string) => {
     if (!data) return
-    setData({
-      ...data,
-      sessions: data.sessions.filter(s => s.id !== id)
-    })
-    if (selectedSessionId === id) {
-      setSelectedSessionId(null)
+    try {
+      const response = await fetch(`/api/history/${id}`, {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        setData({
+          ...data,
+          sessions: data.sessions.filter(s => s.id !== id)
+        })
+        if (selectedSessionId === id) {
+          setSelectedSessionId(null)
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error)
     }
   }
 

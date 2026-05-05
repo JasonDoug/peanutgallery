@@ -8,29 +8,30 @@ This project is being built as a self-hosted, OSS MST3K-style AI video companion
 
 ## Progress Overview
 
-### 1. Frontend (80%) ✅
+### 1. Frontend (90%) ✅
 - [x] UI Shell & Navigation (AppShell, MainNav)
 - [x] Personality System UI (Grid, Card, Editor)
 - [x] Commentary History UI (Grid, Detail)
 - [x] Core Engine UI (Setup Screen, Active Session Display)
-- [ ] Integration with real Backend API (Currently using sample JSON)
+- [x] Integration with real Backend API (Wired via Vite proxy)
 - [ ] GetStream Video Player Integration
 
-### 2. Backend API (40%) 🔄
+### 2. Backend API (90%) ✅
 - [x] Project Initialization (`uv`, FastAPI)
-- [x] Data Models (SQLModel: Personality, Session, Commentary)
+- [x] Data Models (SQLModel: Personality, Session, Commentary, JokeCandidate)
 - [x] Database Initialization & Seeding (SQLite)
-- [x] Basic REST Endpoints (`/personalities`, `/history`)
-- [ ] Session Management Endpoints (`/start`, `/stop`)
-- [ ] Media Upload & Handling logic
+- [x] Full REST CRUD Endpoints (`/personalities`, `/history`, `/setup`)
+- [x] Session Management Logic (Real `/api/sessions` starts background workers)
+- [x] Backend WebSocket/Streaming Foundation (Conceptually mapped in Engine)
+- [ ] Media Upload & Handling logic (Final FFmpeg wiring)
 
-### 3. AI & Commentary Engine (20%) 🔄
+### 3. AI & Commentary Engine (85%) 🔄
 - [x] VisionAgents Scaffolding
 - [x] On-prem STT Integration (Fast-Whisper)
-- [x] On-prem TTS Integration (Kokoro)
+- [x] On-prem TTS Integration (Kokoro / Remote Kokoro Caller)
 - [x] Cloud LLM Integration (OpenRouter)
-- [ ] **Joke Engine (The Brain)**: Scoring logic & context window (10%)
-- [ ] **1-Minute Lookahead (File-mode)**: (0%)
+- [x] **Joke Engine (The Brain)**: Scoring logic & context window (AI-001/002 complete)
+- [x] **1-Minute Lookahead (File-mode)**: Conceptual implementation in `run_file_lookahead` (BE-001)
 - [ ] **1-Minute Buffer (Stream-mode)**: (0%)
 
 ### 4. DevOps & OSS Foundation (65%) 🔄

@@ -13,9 +13,12 @@ export default function Prompts() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/personalities-data.json')
+        const response = await fetch('/api/personalities')
         const jsonData = await response.json()
-        setData(jsonData)
+        setData({
+          _meta: { models: {}, relationships: [] },
+          personalities: jsonData
+        })
       } catch (error) {
         console.error('Error fetching personality data:', error)
       } finally {
@@ -25,14 +28,29 @@ export default function Prompts() {
     fetchData()
   }, [])
 
-  const handleToggleActive = (id: string, active: boolean) => {
+  const handleToggleActive = async (id: string, active: boolean) => {
     if (!data) return
-    setData({
-      ...data,
-      personalities: data.personalities.map(p => 
-        p.id === id ? { ...p, active } : p
-      )
-    })
+    const personality = data.personalities.find(p => p.id === id)
+    if (!personality) return
+
+    try {
+      const response = await fetch(`/api/personalities/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...personality, active })
+      })
+      
+      if (response.ok) {
+        setData({
+          ...data,
+          personalities: data.personalities.map(p => 
+            p.id === id ? { ...p, active } : p
+          )
+        })
+      }
+    } catch (error) {
+      console.error('Error updating personality:', error)
+    }
   }
 
   const handleEdit = (id: string) => {
@@ -45,29 +63,53 @@ export default function Prompts() {
     setTestOutput(null)
   }
 
-  const handleSave = (personality: Personality) => {
+  const handleSave = async (personality: Personality) => {
     if (!data) return
     setIsSaving(true)
     
-    // Simulate API call
-    setTimeout(() => {
-      if (editingId === 'new') {
-        const newP = { ...personality, id: `p${Date.now()}`, isPreset: false }
+    try {
+      const isNew = editingId === 'new'
+      const url = isNew ? '/api/personalities' : `/api/personalities/${personality.id}`
+      const method = isNew ? 'POST' : 'PUT'
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(personality)
+      })
+
+      if (response.ok) {
+        const savedP = await response.json()
         setData({
           ...data,
-          personalities: [...data.personalities, newP]
+          personalities: isNew 
+            ? [...data.personalities, savedP]
+            : data.personalities.map(p => p.id === savedP.id ? savedP : p)
         })
-      } else {
+        setEditingId(null)
+      }
+    } catch (error) {
+      console.error('Error saving personality:', error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!data) return
+    try {
+      const response = await fetch(`/api/personalities/${id}`, {
+        method: 'DELETE'
+      })
+      if (response.ok) {
         setData({
           ...data,
-          personalities: data.personalities.map(p => 
-            p.id === editingId ? personality : p
-          )
+          personalities: data.personalities.filter(p => p.id !== id)
         })
       }
-      setIsSaving(false)
-      setEditingId(null)
-    }, 500)
+    } catch (error) {
+      console.error('Error deleting personality:', error)
+    }
   }
 
   const handleTestRun = (personality: Personality, input: string) => {
@@ -118,12 +160,7 @@ export default function Prompts() {
       onToggleActive={handleToggleActive}
       onEdit={handleEdit}
       onCreateNew={handleCreateNew}
-      onDelete={(id) => {
-        setData({
-          ...data,
-          personalities: data.personalities.filter(p => p.id !== id)
-        })
-      }}
+      onDelete={handleDelete}
     />
   )
 }

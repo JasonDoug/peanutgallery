@@ -7,15 +7,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Simulate fetching data
     const fetchData = async () => {
       try {
-        const response = await fetch('/sample-data.json')
-        const jsonData = await response.json()
-        setData(jsonData)
+        const response = await fetch('/api/setup')
+        if (response.ok) {
+          const jsonData = await response.json()
+          setData(jsonData)
+        } else {
+          console.error('Failed to fetch setup data')
+        }
       } catch (error) {
-        console.error('Error fetching sample data:', error)
-        // Fallback or error state handling
+        console.error('Error fetching setup data:', error)
       } finally {
         setLoading(false)
       }

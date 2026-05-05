@@ -1,16 +1,26 @@
 import logging
+import os
+import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from typing import List, Optional
+
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
-from typing import List
-import json
-import os
 
 from .database import engine, init_db, get_session
 from .models import Personality, CommentarySession, CommentaryEntry
+from .engine import PeanutGalleryEngine
 
 logger = logging.getLogger(__name__)
+
+# Initialize the Engine
+pg_engine = PeanutGalleryEngine(
+    api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+    stream_key=os.environ.get("STREAM_API_KEY", ""),
+    stream_secret=os.environ.get("STREAM_API_SECRET", ""),
+    kokoro_url=os.environ.get("KOKORO_SERVER_URL")
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,8 +48,7 @@ app.add_middleware(
 
 def seed_presets(session: Session):
     try:
-        # Prefer PRESETS_PATH env var, fallback to local path
-        default_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "personalities-data.json")
+        default_path = os.path.join(os.path.dirname(__file__), "personalities-data.json")
         json_path = os.environ.get("PRESETS_PATH", default_path)
         
         if not os.path.exists(json_path):
@@ -49,9 +58,7 @@ def seed_presets(session: Session):
         with open(json_path, "r") as f:
             data = json.load(f)
             for p_data in data.get("personalities", []):
-                # Only seed presets
                 if p_data.get("isPreset"):
-                    # Check if already exists by name or id
                     statement = select(Personality).where(Personality.name == p_data["name"])
                     if session.exec(statement).first():
                         continue
@@ -80,23 +87,136 @@ def seed_presets(session: Session):
     except Exception as e:
         logger.error(f"Unexpected error seeding presets: {e}")
 
+# --- Personalities API ---
+
 @app.get("/api/personalities", response_model=List[Personality])
 def list_personalities(session: Session = Depends(get_session)):
     return session.exec(select(Personality)).all()
 
+@app.post("/api/personalities", response_model=Personality)
+def create_personality(personality: Personality, session: Session = Depends(get_session)):
+    session.add(personality)
+    session.commit()
+    session.refresh(personality)
+    return personality
+
+@app.put("/api/personalities/{id}", response_model=Personality)
+def update_personality(id: str, updated_p: Personality, session: Session = Depends(get_session)):
+    db_p = session.get(Personality, id)
+    if not db_p:
+        raise HTTPException(status_code=404, detail="Personality not found")
+    
+    p_data = updated_p.dict(exclude_unset=True)
+    for key, value in p_data.items():
+        if key != "id":
+            setattr(db_p, key, value)
+    
+    session.add(db_p)
+    session.commit()
+    session.refresh(db_p)
+    return db_p
+
+@app.delete("/api/personalities/{id}")
+def delete_personality(id: str, session: Session = Depends(get_session)):
+    db_p = session.get(Personality, id)
+    if not db_p:
+        raise HTTPException(status_code=404, detail="Personality not found")
+    if db_p.isPreset:
+        raise HTTPException(status_code=403, detail="Cannot delete preset personalities")
+    
+    session.delete(db_p)
+    session.commit()
+    return {"ok": True}
+
+# --- Sessions & History API ---
+
 @app.get("/api/history", response_model=List[CommentarySession])
 def list_history(session: Session = Depends(get_session)):
-    return session.exec(select(CommentarySession)).all()
+    return session.exec(select(CommentarySession).order_by(CommentarySession.date.desc())).all()
 
-@app.get("/api/history/{session_id}", response_model=CommentarySession)
+@app.post("/api/sessions", response_model=CommentarySession)
+async def create_session(session_req: CommentarySession, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    personality = session.get(Personality, session_req.personalityId)
+    if not personality:
+        raise HTTPException(status_code=404, detail="Personality not found")
+    
+    try:
+        # Initialize Riff Agent (AI-001/002/003)
+        await pg_engine.create_riff_agent(personality.id, personality.systemPrompt)
+        
+        # Start Lookahead (BE-001)
+        pg_engine.active_sessions[session_req.id] = True
+        background_tasks.add_task(pg_engine.run_file_lookahead, session_req.id, session_req.videoSource)
+        
+        session.add(session_req)
+        session.commit()
+        session.refresh(session_req)
+        return session_req
+    except Exception as e:
+        logger.error(f"Failed to start session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/sessions/{session_id}/stop")
+async def stop_session(session_id: str):
+    if session_id in pg_engine.active_sessions:
+        del pg_engine.active_sessions[session_id]
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="Active session not found")
+
+@app.get("/api/history/{session_id}")
 def get_session_detail(session_id: str, session: Session = Depends(get_session)):
     db_session = session.get(CommentarySession, session_id)
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
-    # In a real implementation, we'd join with CommentaryEntry
-    # For now, we return the session object
     return db_session
+
+@app.delete("/api/history/{session_id}")
+def delete_session(session_id: str, session: Session = Depends(get_session)):
+    db_session = session.get(CommentarySession, session_id)
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.delete(db_session)
+    session.commit()
+    return {"ok": True}
+
+# --- Setup & Voices API ---
+
+@app.get("/api/voices")
+def list_voices():
+    return [
+        {"id": "af_heart", "name": "Heart (Female)", "provider": "kokoro", "gender": "female", "accent": "US"},
+        {"id": "am_adam", "name": "Adam (Male)", "provider": "kokoro", "gender": "male", "accent": "US"},
+        {"id": "bf_emma", "name": "Emma (Female)", "provider": "kokoro", "gender": "female", "accent": "UK"},
+    ]
+
+@app.get("/api/setup", response_model=dict)
+def get_setup(session: Session = Depends(get_session)):
+    personalities = session.exec(select(Personality)).all()
+    agents = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "personality": p.description,
+            "voiceId": "af_heart",
+            "temperature": p.temperature,
+            "isDefault": p.isPreset
+        } for p in personalities
+    ]
+    
+    return {
+        "agents": agents,
+        "voices": list_voices(),
+        "commentary": [],
+        "videoSources": [],
+        "activeSession": {
+            "videoSourceId": "",
+            "agentId": agents[0]["id"] if agents else "",
+            "voiceId": "af_heart",
+            "delaySeconds": 60,
+            "volume": 80,
+            "isPlaying": False
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn
