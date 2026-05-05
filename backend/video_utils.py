@@ -2,7 +2,6 @@ import av
 import logging
 import yt_dlp
 from PIL import Image
-import io
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -26,19 +25,20 @@ class FileFrameExtractor:
 
     def get_frame_at_timestamp(self, timestamp_seconds: float) -> Optional[Image.Image]:
         """
-        Seeks to the given timestamp and extracts the closest keyframe.
+        Seeks to the given timestamp using the stream timebase.
         """
         if not self.container:
             return None
 
         try:
-            # Seek to the timestamp (in microseconds)
-            target_ts = int(timestamp_seconds * 1_000_000)
-            self.container.seek(target_ts, any_frame=False, backward=True, stream=self.container.streams.video[0])
+            video_stream = self.container.streams.video[0]
+            # Convert seconds to the stream's timebase (Ticket CodeRabbit fix)
+            target_ts = int(timestamp_seconds / video_stream.time_base)
+            
+            self.container.seek(target_ts, any_frame=False, backward=True, stream=video_stream)
 
             # Read the next frame
             for frame in self.container.decode(video=0):
-                # Convert to PIL Image
                 return frame.to_image()
         except Exception as e:
             logger.error(f"Error extracting frame at {timestamp_seconds}s: {e}")
@@ -50,17 +50,18 @@ class YouTubeIngestor:
     @staticmethod
     def get_stream_url(youtube_url: str) -> Optional[str]:
         """
-        Uses yt-dlp to extract the direct video stream URL.
+        Uses yt-dlp to extract the direct video stream URL with timeout.
         """
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
+            'socket_timeout': 10, # Added timeout
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
                 return info.get('url')
-        except Exception as e:
+        except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
             logger.error(f"Failed to extract YouTube URL: {e}")
             return None

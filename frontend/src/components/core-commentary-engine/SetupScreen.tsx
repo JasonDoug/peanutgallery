@@ -22,10 +22,11 @@ export function SetupScreen({
 
   const canStart = activeSession.videoSourceId && selectedAgentId
 
-  // Use the commentary audio hook (FE-002)
-  const { jokes } = useCommentaryAudio((activeSession as any).sessionId)
+  // Use the commentary audio hook (FE-002) - sessionId is now typed (Ticket fix)
+  const { jokes } = useCommentaryAudio(activeSession.sessionId ?? null)
 
   const activeSource = videoSources.find(s => s.id === activeSession.videoSourceId)
+  const isYouTube = activeSource?.url?.includes('youtube.com') || activeSource?.url?.includes('youtu.be')
 
   return (
     <div className="min-h-screen bg-zinc-950 relative overflow-hidden">
@@ -69,8 +70,8 @@ export function SetupScreen({
             onUrlSubmit={(url) => onVideoUrlSubmit?.(url)}
             onUpload={(file) => onVideoUpload?.(file)}
             onSelect={(id) => {
-              // This should be handled by the parent
-              console.log('Select source:', id)
+              // Select the source (Ticket nitpick: ensure state update)
+              onAgentSelect?.(id) 
             }}
           />
         </section>
@@ -118,12 +119,23 @@ export function SetupScreen({
             {/* Simple Video Player for Demo */}
             {activeSource && (
               <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl">
-                <video
-                  src={activeSource.url}
-                  className="w-full h-full object-contain"
-                  controls
-                  autoPlay
-                />
+                {isYouTube ? (
+                  <iframe
+                    src={`https://www.youtube.com/embed/${activeSource.url?.split('v=')[1]?.split('&')[0]}`}
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    src={activeSource.url}
+                    className="w-full h-full object-contain"
+                    controls
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                )}
                 
                 {/* Last Joke Overlay */}
                 {jokes.length > 0 && (

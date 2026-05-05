@@ -72,6 +72,12 @@ export default function Home() {
     const source = data.videoSources.find(s => s.id === data.activeSession.videoSourceId)
     if (!source) return
 
+    // Finding 2: source.url must exist (uploaded files logic disabled for now)
+    if (!source.url && source.fileName) {
+      console.error("Local file upload not yet implemented.")
+      return
+    }
+
     try {
       const response = await fetch('/api/sessions', {
         method: 'POST',
@@ -79,7 +85,7 @@ export default function Home() {
         body: JSON.stringify({
           title: source.title,
           personalityId: data.activeSession.agentId,
-          videoSource: source.url || source.fileName || ''
+          videoSource: source.url || ''
         })
       })
 
@@ -90,9 +96,12 @@ export default function Home() {
           activeSession: {
             ...prev.activeSession,
             isPlaying: true,
-            sessionId: session.id // Store the DB session ID
+            sessionId: session.id
           },
         }) : prev)
+      } else {
+        const errorData = await response.json()
+        console.error('Failed to start commentary session:', errorData.detail)
       }
     } catch (error) {
       console.error('Failed to start commentary session:', error)
@@ -104,21 +113,32 @@ export default function Home() {
     const isCurrentlyPlaying = data.activeSession.isPlaying
     
     if (isCurrentlyPlaying && data.activeSession.sessionId) {
-      // Stop the session on the backend
       try {
-        await fetch(`/api/sessions/${data.activeSession.sessionId}/stop`, { method: 'POST' })
+        const response = await fetch(`/api/sessions/${data.activeSession.sessionId}/stop`, { method: 'POST' })
+        if (response.ok) {
+          setData(prev => prev ? ({
+            ...prev,
+            activeSession: {
+              ...prev.activeSession,
+              isPlaying: false,
+            },
+          }) : prev)
+        } else {
+          console.error('Failed to stop session:', await response.text())
+        }
       } catch (error) {
         console.error('Failed to stop session:', error)
       }
+    } else {
+      // Just toggle UI if no session is active (shouldn't happen with current logic)
+      setData(prev => prev ? ({
+        ...prev,
+        activeSession: {
+          ...prev.activeSession,
+          isPlaying: !isCurrentlyPlaying,
+        },
+      }) : prev)
     }
-
-    setData(prev => prev ? ({
-      ...prev,
-      activeSession: {
-        ...prev.activeSession,
-        isPlaying: !isCurrentlyPlaying,
-      },
-    }) : prev)
   }
 
   if (loading) {

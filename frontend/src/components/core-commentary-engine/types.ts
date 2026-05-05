@@ -38,6 +38,7 @@ export interface ActiveSession {
   delaySeconds: number
   volume: number
   isPlaying: boolean
+  sessionId?: string
 }
 
 export interface CoreCommentaryEngineData {

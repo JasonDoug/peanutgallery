@@ -48,14 +48,15 @@ This project is being built as a self-hosted, OSS MST3K-style AI video companion
 ## 🛠 What's Next (The "To-Do" List)
 
 ### Immediate Priority
-1. **The Joke Engine**: Finalize the prompt engineering for OpenRouter to handle the "Riffing" style and implement the scoring system.
-2. **File Lookahead**: Implement the background worker that reads a local video file 60 seconds ahead of a "current_time" pointer.
-3. **Frontend Wiring**: Switch the React frontend from `fetch('/sample-data.json')` to `fetch('http://localhost:8000/api/...')`.
+1. **GetStream Call Integration**: Move from standard players/WebSockets to real `getstream.Edge` transport for production-grade latency.
+2. **Audio Ducking**: Implement the `CommentaryAudioMixer` to lower movie volume when the AI is riffing.
+3. **Hardware Scaling**: Benchmark and document compute/VRAM requirements for multiple concurrent sessions.
+4. **Self-Hosting Guide**: Finalize the Docker/On-prem setup documentation for the OSS community.
 
 ### 0% Completes (Future Milestones)
-- **YouTube/URL Buffering**: Logic to ingest a streaming URL and hold it in a 1-minute buffer before processing.
 - **Scene Change Detection**: Custom VisionAgent processor to trigger jokes specifically on scene transitions.
-- **Multi-Agent Riffing**: Allowing two personalities to "talk" to each other about the same clip.
+- **Multi-Agent Riffing**: Allowing two personalities to "talk" to each other about the same clip (post-MVP).
+- **CI/CD Pipelines**: Automated testing and deployment workflows.
 
 ---
 

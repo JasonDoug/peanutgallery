@@ -5,6 +5,7 @@ import os
 import httpx
 import json
 import re
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Deque, Dict
 from collections import deque
@@ -88,8 +89,9 @@ class PeanutGalleryEngine:
         self.remote_tts = KokoroRemoteCaller(kokoro_url) if kokoro_url else None
         self.active_sessions: Dict[str, Dict] = {}
         
-        # Initialize Local VLM
+        # Shared VLM with Lock (or one per session)
         self.vlm = moondream.LocalVLM(device=self.device)
+        self.vlm_lock = asyncio.Lock()
 
     async def close(self):
         if self.remote_tts:
@@ -138,7 +140,8 @@ class PeanutGalleryEngine:
         self.active_sessions[session_id] = {
             "agent": agent,
             "context": context,
-            "task": None
+            "task": None,
+            "queue": asyncio.Queue()
         }
 
         return agent
@@ -154,12 +157,13 @@ class PeanutGalleryEngine:
 
         agent = session["agent"]
         context = session["context"]
+        queue = session["queue"]
 
-        # Resolve URL if YouTube (Ticket BE-002)
+        # Resolve URL if YouTube (Case-insensitive check)
         video_path = video_source
-        if "youtube.com" in video_source or "youtu.be" in video_source:
+        if "youtube.com" in video_source.lower() or "youtu.be" in video_source.lower():
             logger.info(f"Resolving YouTube stream for {video_source}")
-            video_path = YouTubeIngestor.get_stream_url(video_source)
+            video_path = await asyncio.to_thread(YouTubeIngestor.get_stream_url, video_source)
             if not video_path:
                 logger.error("Failed to resolve YouTube stream.")
                 return
@@ -179,15 +183,16 @@ class PeanutGalleryEngine:
                     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
                     lookahead_ts = elapsed + lookahead_offset
                     
-                    # 1. Real Vision Extraction (Ticket BE-001)
-                    frame = extractor.get_frame_at_timestamp(lookahead_ts)
+                    # 1. Real Vision Extraction (Wrapped in thread)
+                    frame = await asyncio.to_thread(extractor.get_frame_at_timestamp, lookahead_ts)
                     if frame:
-                        # Moondream analysis
-                        description = await self.vlm.describe(frame)
+                        # Moondream analysis (Protected by lock)
+                        async with self.vlm_lock:
+                            description = await self.vlm.describe(frame)
                         logger.debug(f"Lookahead ({lookahead_ts}s) Scene: {description}")
                         context.add_scene(description)
                     else:
-                        logger.warning(f"Failed to extract frame at {lookahead_ts}s (End of file?)")
+                        logger.warning(f"Failed to extract frame at {lookahead_ts}s")
                     
                     # 2. Check if it's time for a joke
                     if datetime.now(timezone.utc) - last_joke_time > timedelta(seconds=25):
@@ -195,10 +200,23 @@ class PeanutGalleryEngine:
                         if joke_text:
                             logger.info(f"Generated Riff: {joke_text}")
                             
+                            audio_b64 = None
                             # 3. Synthesize Voice
                             if self.remote_tts:
                                 audio_data = await self.remote_tts.generate_speech(joke_text)
-                                # TODO: Push to Frontend via WebSocket
+                                if audio_data:
+                                    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+                            
+                            # 4. Push to Queue for WebSocket
+                            await queue.put({
+                                "type": "commentary",
+                                "payload": {
+                                    "id": str(random.getrandbits(64)),
+                                    "text": joke_text,
+                                    "audio_b64": audio_b64,
+                                    "timestamp": str(timedelta(seconds=lookahead_ts))
+                                }
+                            })
                             
                             last_joke_time = datetime.now(timezone.utc)
                 
