@@ -11,18 +11,29 @@ export default function History() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/history-data.json')
+        const response = await fetch('/api/history')
+        if (!response.ok) {
+          throw new Error('Failed to fetch history')
+        }
         const jsonData = await response.json()
         
+        if (!Array.isArray(jsonData)) {
+          throw new Error('History payload is not an array')
+        }
+
         // Add placeholder thumbnails if needed
-        const sessionsWithThumbnails = jsonData.sessions.map((s: any) => ({
+        const sessionsWithThumbnails = jsonData.map((s: CommentarySession) => ({
           ...s,
-          thumbnailUrl: `https://picsum.photos/seed/${s.id}/800/450`
+          thumbnailUrl: s.thumbnailUrl || `https://picsum.photos/seed/${s.id}/800/450`
         }))
 
-        setData({ ...jsonData, sessions: sessionsWithThumbnails })
+        setData({ 
+          _meta: { models: {}, relationships: [] },
+          sessions: sessionsWithThumbnails 
+        })
       } catch (error) {
         console.error('Error fetching history data:', error)
+        setData({ _meta: { models: {}, relationships: [] }, sessions: [] })
       } finally {
         setLoading(false)
       }
@@ -30,14 +41,23 @@ export default function History() {
     fetchData()
   }, [])
 
-  const handleDeleteSession = (id: string) => {
+  const handleDeleteSession = async (id: string) => {
     if (!data) return
-    setData({
-      ...data,
-      sessions: data.sessions.filter(s => s.id !== id)
-    })
-    if (selectedSessionId === id) {
-      setSelectedSessionId(null)
+    try {
+      const response = await fetch(`/api/history/${id}`, {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        setData({
+          ...data,
+          sessions: data.sessions.filter(s => s.id !== id)
+        })
+        if (selectedSessionId === id) {
+          setSelectedSessionId(null)
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error)
     }
   }
 

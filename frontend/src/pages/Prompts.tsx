@@ -13,9 +13,15 @@ export default function Prompts() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/personalities-data.json')
+        const response = await fetch('/api/personalities')
+        if (!response.ok) {
+          throw new Error('Failed to fetch personalities')
+        }
         const jsonData = await response.json()
-        setData(jsonData)
+        setData({
+          _meta: { models: {}, relationships: [] },
+          personalities: Array.isArray(jsonData) ? jsonData : []
+        })
       } catch (error) {
         console.error('Error fetching personality data:', error)
       } finally {
@@ -25,14 +31,35 @@ export default function Prompts() {
     fetchData()
   }, [])
 
-  const handleToggleActive = (id: string, active: boolean) => {
-    if (!data) return
-    setData({
-      ...data,
-      personalities: data.personalities.map(p => 
-        p.id === id ? { ...p, active } : p
-      )
-    })
+  const handleToggleActive = async (id: string, active: boolean) => {
+    try {
+      // Find personality in the latest state to ensure accuracy
+      let personality: Personality | undefined;
+      setData(prev => {
+        if (!prev) return prev;
+        personality = prev.personalities.find(p => p.id === id);
+        return prev;
+      });
+
+      if (!personality) return;
+
+      const response = await fetch(`/api/personalities/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...personality, active })
+      })
+      
+      if (response.ok) {
+        setData(prev => prev ? ({
+          ...prev,
+          personalities: prev.personalities.map(p => 
+            p.id === id ? { ...p, active } : p
+          )
+        }) : prev)
+      }
+    } catch (error) {
+      console.error('Error updating personality:', error)
+    }
   }
 
   const handleEdit = (id: string) => {
@@ -45,29 +72,51 @@ export default function Prompts() {
     setTestOutput(null)
   }
 
-  const handleSave = (personality: Personality) => {
-    if (!data) return
+  const handleSave = async (personality: Personality) => {
     setIsSaving(true)
     
-    // Simulate API call
-    setTimeout(() => {
-      if (editingId === 'new') {
-        const newP = { ...personality, id: `p${Date.now()}`, isPreset: false }
-        setData({
-          ...data,
-          personalities: [...data.personalities, newP]
-        })
-      } else {
-        setData({
-          ...data,
-          personalities: data.personalities.map(p => 
-            p.id === editingId ? personality : p
-          )
-        })
+    try {
+      const isNew = editingId === 'new'
+      const url = isNew ? '/api/personalities' : `/api/personalities/${personality.id}`
+      const method = isNew ? 'POST' : 'PUT'
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(personality)
+      })
+
+      if (response.ok) {
+        const savedP = await response.json()
+        setData(prev => prev ? ({
+          ...prev,
+          personalities: isNew 
+            ? [...prev.personalities, savedP]
+            : prev.personalities.map(p => p.id === savedP.id ? savedP : p)
+        }) : prev)
+        setEditingId(null)
       }
+    } catch (error) {
+      console.error('Error saving personality:', error)
+    } finally {
       setIsSaving(false)
-      setEditingId(null)
-    }, 500)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      const response = await fetch(`/api/personalities/${id}`, {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        setData(prev => prev ? ({
+          ...prev,
+          personalities: prev.personalities.filter(p => p.id !== id)
+        }) : prev)
+      }
+    } catch (error) {
+      console.error('Error deleting personality:', error)
+    }
   }
 
   const handleTestRun = (personality: Personality, input: string) => {
@@ -118,12 +167,7 @@ export default function Prompts() {
       onToggleActive={handleToggleActive}
       onEdit={handleEdit}
       onCreateNew={handleCreateNew}
-      onDelete={(id) => {
-        setData({
-          ...data,
-          personalities: data.personalities.filter(p => p.id !== id)
-        })
-      }}
+      onDelete={handleDelete}
     />
   )
 }
