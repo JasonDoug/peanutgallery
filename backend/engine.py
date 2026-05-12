@@ -89,8 +89,9 @@ class PeanutGalleryEngine:
         self.remote_tts = KokoroRemoteCaller(kokoro_url) if kokoro_url else None
         self.active_sessions: Dict[str, Dict] = {}
         
-        # Shared VLM with Lock (or one per session)
-        self.vlm = moondream.LocalVLM(device=self.device)
+        # Initialize Local VLM (Ticket Fix: LocalVLM uses force_cpu instead of device)
+        force_cpu = (self.device == "cpu")
+        self.vlm = moondream.LocalVLM(force_cpu=force_cpu)
         self.vlm_lock = asyncio.Lock()
 
     async def close(self):
